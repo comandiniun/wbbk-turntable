@@ -202,10 +202,10 @@ function fillerItems(names) {
 
 const KITS = [
   { name: 'Primary',   color: 0xff8a3d, items: fillerItems([
-    'Sharpie', 'Tape', 'Sealed bag', 'Gloves',
+    'Transceiver Unit', 'Antenna Mast', 'Battery Pack', 'Control Module',
   ])},
   { name: 'Donor',      color: 0x46e0b8, items: fillerItems([
-    'Plasters', 'Cable Reel', 'Attenuator', 'Patch Panel', 'Coupler',
+    'Signal Splitter', 'Cable Reel', 'Attenuator', 'Patch Panel', 'Coupler',
     'Test Meter', 'Adapter A', 'Adapter B', 'Grounding Strap', 'Sealing Tape',
   ])},
   { name: 'Recipient',  color: 0x5aa9ff, items: fillerItems([
@@ -226,7 +226,7 @@ const KITS = [
 // `key` for stronger highlights/more contrast, raise `fill`/`ambient`
 // to lift shadowed sides without flattening the look entirely.
 // ---------------------------------------------------------------
-const LIGHTING = { exposure: 0.75, ambient: 0.55, key: 1.5, rim: 0.45, fill: 0.6 };
+const LIGHTING = { exposure: 0.95, ambient: 0.4, key: 1.0, rim: 0.35, fill: 0.4 };
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 100);
@@ -360,6 +360,14 @@ const INSPECT_FILL_FRACTION = 0.36;
 // how big items render once a kit is opened/exploded, tiered by item count
 // so crowded kits (Donor/Recipient, 10 items) still fit the arc
 const EXPLODED_SCALE_BY_COUNT = { low: 1, mid: 0.75, high: 0.58 };
+// how far (world units, straight down) the turntable ring, the 3 unopened
+// kits, and the active kit's own box/lid drop out of frame once a kit is
+// open — leaves a neutral background so the items read clearly on their own
+const SLIDE_OUT_Y = -8;
+const BASE_SLOT_HOME_Y = -0.1;
+const LID_PIVOT_HOME_Y = 0.35;
+const ROOT_HOME_Y = 0;
+const RING_HOME_Y = -1.4;
 const turntableGroup = new THREE.Group();
 scene.add(turntableGroup);
 
@@ -517,6 +525,7 @@ function goToTurntable() {
     tween(kit.lidPivot.rotation, { x: 0 }, 500);
     tween(kit.root.scale, { x: 1, y: 1, z: 1 }, 500);
   }
+  slideBackgroundIn(kit);
 }
 
 function openKit(kitObj) {
@@ -577,6 +586,31 @@ function spreadItems(kitObj) {
     tween(m.scale, { x: L.scale, y: L.scale, z: L.scale }, 500);
     tween(m.position, { x: L.x, y: L.y, z: L.z }, 650, { ease: easeInOutCubic });
   });
+  slideBackgroundOut(kitObj);
+}
+
+// Drops the ring, the 3 unopened kits, and the active kit's own box/lid
+// straight down out of frame so the items are left against a clean,
+// neutral background. Items themselves are untouched — they're siblings
+// of baseSlot/lidPivot under kitObj.root, not children of either, so this
+// doesn't affect their position.
+function slideBackgroundOut(kitObj) {
+  kitObjects.forEach(k => {
+    if (k !== kitObj) tween(k.root.position, { y: SLIDE_OUT_Y }, 600, { ease: easeInOutCubic });
+  });
+  tween(kitObj.baseSlot.position, { y: BASE_SLOT_HOME_Y + SLIDE_OUT_Y }, 600, { ease: easeInOutCubic });
+  tween(kitObj.lidPivot.position, { y: LID_PIVOT_HOME_Y + SLIDE_OUT_Y }, 600, { ease: easeInOutCubic });
+  tween(ring.position, { y: RING_HOME_Y + SLIDE_OUT_Y }, 600, { ease: easeInOutCubic });
+}
+
+// Brings everything back up to its resting position on the way back to the turntable.
+function slideBackgroundIn(kitObj) {
+  kitObjects.forEach(k => tween(k.root.position, { y: ROOT_HOME_Y }, 500, { ease: easeInOutCubic }));
+  if (kitObj) {
+    tween(kitObj.baseSlot.position, { y: BASE_SLOT_HOME_Y }, 500, { ease: easeInOutCubic });
+    tween(kitObj.lidPivot.position, { y: LID_PIVOT_HOME_Y }, 500, { ease: easeInOutCubic });
+  }
+  tween(ring.position, { y: RING_HOME_Y }, 500, { ease: easeInOutCubic });
 }
 
 // Computes where an inspected item needs to sit — in its own kit's LOCAL
@@ -705,11 +739,13 @@ renderer.domElement.addEventListener('click', (e) => {
       // resolve the leaf mesh hit back to its item slot (the thing we actually animate)
       const itemIndex = hits[0].object.userData.itemIndex;
       inspectItem(activeKit, activeKit.items[itemIndex]);
+    } else {
+      // clicked empty space — same as hitting Back
+      goToTurntable();
     }
   } else if (STATE === 'inspecting' && activeKit && activeItem) {
-    // clicking the inspected item again returns it to the arc
-    const hits = raycaster.intersectObject(activeItem, true);
-    if (hits.length) backFromInspect(activeKit, activeItem);
+    // clicking the inspected item, OR anywhere outside it, returns it to the arc
+    backFromInspect(activeKit, activeItem);
   }
 });
 
