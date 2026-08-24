@@ -101,17 +101,29 @@
      rotating item reads clearly against it --- */
   #vignette {
     position: fixed; inset: 0; z-index: 2; pointer-events: none;
-    /* radius uses vh units to match how the inspected item is sized: it's
-       scaled to fill ~36% of the viewport height (see computeInspectTransform),
-       so a clear zone of ~40vh diameter always sits just outside the item,
-       regardless of aspect ratio or screen size */
-    background: radial-gradient(circle at 50% 52%,
+    /* frosted glass: blur + lighten the surrounding scene instead of
+       darkening it, with a masked-out hole so the inspected item itself
+       stays perfectly sharp and unaffected */
+    background: rgba(232, 238, 245, 0.10);
+    backdrop-filter: blur(22px) saturate(115%) brightness(1.12);
+    -webkit-backdrop-filter: blur(22px) saturate(115%) brightness(1.12);
+    /* the inspected item is WebGL content painted on the same canvas the
+       blur reads from — it can't be "raised above" the frost via z-index.
+       the only way to exempt it is a masked hole. computeInspectTransform
+       always centers the item at true screen middle, so an exact-fit hole
+       here stays aligned with it; frost is full-bleed everywhere else. */
+    -webkit-mask-image: radial-gradient(circle at 50% 52%,
       transparent 0,
-      transparent 10vh,
-      rgba(8,14,22,0.55) 26vh,
-      rgba(6,11,18,0.87) 34vh,
-      rgba(5,9,15,0.97) 46vh,
-      rgba(4,7,12,1) 60vh);
+      transparent 20vh,
+      rgba(0,0,0,0.25) 28vh,
+      rgba(0,0,0,0.65) 38vh,
+      #000 52vh);
+    mask-image: radial-gradient(circle at 50% 52%,
+      transparent 0,
+      transparent 20vh,
+      rgba(0,0,0,0.25) 28vh,
+      rgba(0,0,0,0.65) 38vh,
+      #000 52vh);
     opacity: 0;
     transition: opacity 0.45s ease;
   }
@@ -208,6 +220,14 @@ const KITS = [
 // ---------------------------------------------------------------
 // SCENE SETUP
 // ---------------------------------------------------------------
+// ---------------------------------------------------------------
+// LIGHTING — single place to tune brightness/contrast for imported
+// .glb models. Raise `exposure` for an overall brighter scene, raise
+// `key` for stronger highlights/more contrast, raise `fill`/`ambient`
+// to lift shadowed sides without flattening the look entirely.
+// ---------------------------------------------------------------
+const LIGHTING = { exposure: 1.15, ambient: 0.55, key: 1.5, rim: 0.45, fill: 0.6 };
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 100);
 const CAMERA_BASE = { z: 13, y: 3.4, fov: 42 };
@@ -215,6 +235,12 @@ camera.position.set(0, CAMERA_BASE.y, CAMERA_BASE.z);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// --- color management: without this, imported .glb PBR materials (which
+// expect sRGB-decoded textures + filmic response) read dark and flat next
+// to the placeholder MeshStandardMaterial shapes, which don't rely on it.
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = LIGHTING.exposure;
 document.body.appendChild(renderer.domElement);
 
 // Keeps the full ring — and a fully spread-out 12-item kit — in frame on
@@ -243,13 +269,17 @@ function fitCameraToViewport() {
 }
 fitCameraToViewport();
 
-scene.add(new THREE.AmbientLight(0x8899bb, 0.6));
-const key = new THREE.DirectionalLight(0xffffff, 1.1);
+scene.add(new THREE.AmbientLight(0x8899bb, LIGHTING.ambient));
+const key = new THREE.DirectionalLight(0xffffff, LIGHTING.key);
 key.position.set(5, 8, 6);
 scene.add(key);
-const rim = new THREE.DirectionalLight(0xff8a3d, 0.4);
+const rim = new THREE.DirectionalLight(0xff8a3d, LIGHTING.rim);
 rim.position.set(-6, 3, -4);
 scene.add(rim);
+// soft top/bottom fill so the undersides of imported models (which the
+// key + rim lights above don't reach) don't read as pure black
+const fill = new THREE.HemisphereLight(0x9fb4d8, 0x14233a, LIGHTING.fill);
+scene.add(fill);
 
 // ground ring for grounding
 const ringGeo = new THREE.RingGeometry(5.6, 5.8, 64);
@@ -268,11 +298,11 @@ scene.add(ring);
 //   models/
 //     primary/box.glb          <- the closed kit case
 //     primary/lid.glb          <- optional: separate lid mesh
-//     primary/sharpie.glb
+//     primary/transceiver-unit.glb
 //     primary/antenna-mast.glb
 //     ...one file per item, named after the item name...
 //     donor/box.glb
-//     donor/plasters.glb
+//     donor/signal-splitter.glb
 //     ...etc for donor, recipient, transport
 // ---------------------------------------------------------------
 const ASSET_BASE = './models/';
@@ -318,6 +348,18 @@ function loadIntoSlot(slot, url, { targetSize = 1 } = {}) {
 // BUILD KITS
 // ---------------------------------------------------------------
 const RADIUS = 5;
+// --- size controls, all in one place ---
+// BOX_TARGET_SIZE / ITEM_TARGET_SIZE: the "natural" size an imported .glb
+// is normalized to on load (its largest dimension becomes this many world
+// units) — this is the size on the turntable / just after the kit opens.
+// INSPECT_FILL_FRACTION: how much of the viewport height an item fills
+// once you click to inspect it (0.36 = 36% of frame height).
+const BOX_TARGET_SIZE = 1.6;
+const ITEM_TARGET_SIZE = 0.9;
+const INSPECT_FILL_FRACTION = 0.36;
+// how big items render once a kit is opened/exploded, tiered by item count
+// so crowded kits (Donor/Recipient, 10 items) still fit the arc
+const EXPLODED_SCALE_BY_COUNT = { low: 1, mid: 0.75, high: 0.58 };
 const turntableGroup = new THREE.Group();
 scene.add(turntableGroup);
 
@@ -352,7 +394,7 @@ KITS.forEach((data, i) => {
   const basePlaceholder = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 1.1), baseMat);
   basePlaceholder.userData = kitUserData;
   baseSlot.add(basePlaceholder);
-  loadIntoSlot(baseSlot, `${ASSET_BASE}${kitSlug(data.name)}/box.glb`, { targetSize: 1.6 });
+  loadIntoSlot(baseSlot, `${ASSET_BASE}${kitSlug(data.name)}/box.glb`, { targetSize: BOX_TARGET_SIZE });
 
   // lid — optional separate slot; falls back to a simple hinged primitive
   const lidPivot = new THREE.Group();
@@ -364,7 +406,7 @@ KITS.forEach((data, i) => {
   const lidPlaceholder = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 1.1), baseMat.clone());
   lidSlot.add(lidPlaceholder);
   lidSlot.userData = kitUserData;
-  loadIntoSlot(lidSlot, `${ASSET_BASE}${kitSlug(data.name)}/lid.glb`, { targetSize: 1.6 });
+  loadIntoSlot(lidSlot, `${ASSET_BASE}${kitSlug(data.name)}/lid.glb`, { targetSize: BOX_TARGET_SIZE });
 
   // items — each is its own slot, starts hidden inside the box
   const items = data.items.map((it, idx) => {
@@ -378,7 +420,7 @@ KITS.forEach((data, i) => {
     placeholder.userData = itemUserData;
     slot.add(placeholder);
     root.add(slot);
-    loadIntoSlot(slot, `${ASSET_BASE}${kitSlug(data.name)}/${itemSlug(it.name)}.glb`, { targetSize: 0.9 });
+    loadIntoSlot(slot, `${ASSET_BASE}${kitSlug(data.name)}/${itemSlug(it.name)}.glb`, { targetSize: ITEM_TARGET_SIZE });
     return slot;
   });
 
@@ -516,7 +558,9 @@ function layoutFor(n, idx) {
   const idxInRow = rows === 1 ? idx : (rowIndex === 0 ? idx : idx - Math.ceil(n / 2));
   const t = rowCount === 1 ? 0.5 : idxInRow / (rowCount - 1);
   const arcSpread = Math.min(3.4, 1.0 + rowCount * 0.42);
-  const scale = n <= 4 ? 1 : n <= 8 ? 0.75 : 0.58;
+  // exploded-view size: shrinks items as a kit's item count grows so
+  // 10-12 item kits don't overlap. Tune EXPLODED_SCALE_BY_COUNT below.
+  const scale = n <= 4 ? EXPLODED_SCALE_BY_COUNT.low : n <= 8 ? EXPLODED_SCALE_BY_COUNT.mid : EXPLODED_SCALE_BY_COUNT.high;
   return {
     x: (t - 0.5) * arcSpread * 2,
     y: (1.05 + rowIndex * 1.05) + Math.sin(t * Math.PI) * 0.4,
@@ -556,7 +600,7 @@ function computeInspectTransform(kitObj, mesh) {
   const inspectDistance = 6.5; // world units out in front of the camera
   const vFov = camera.fov * Math.PI / 180;
   const visibleHeight = 2 * Math.tan(vFov / 2) * inspectDistance;
-  const targetDiameter = visibleHeight * 0.36; // fills ~36% of frame height, leaves room for the callout tag
+  const targetDiameter = visibleHeight * INSPECT_FILL_FRACTION; // leaves room for the callout tag
   const localScale = Math.max(0.5, Math.min(2.5, targetDiameter / (naturalDiameter * parentWorldScale)));
 
   // dead-center point, straight down the camera's current look direction —
