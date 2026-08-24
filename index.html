@@ -191,6 +191,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/environments/RoomEnvironment.js"></script>
 <script>
 // ---------------------------------------------------------------
 // CONFIG: the four kits and their placeholder contents
@@ -202,10 +203,10 @@ function fillerItems(names) {
 
 const KITS = [
   { name: 'Primary',   color: 0xff8a3d, items: fillerItems([
-    'Sharpie', 'Tape', 'Sealed bag', 'Gloves',
+    'Transceiver Unit', 'Antenna Mast', 'Battery Pack', 'Control Module',
   ])},
   { name: 'Donor',      color: 0x46e0b8, items: fillerItems([
-    'Plasters', 'Blood bag', 'Attenuator', 'Patch Panel', 'Coupler',
+    'Signal Splitter', 'Cable Reel', 'Attenuator', 'Patch Panel', 'Coupler',
     'Test Meter', 'Adapter A', 'Adapter B', 'Grounding Strap', 'Sealing Tape',
   ])},
   { name: 'Recipient',  color: 0x5aa9ff, items: fillerItems([
@@ -242,6 +243,21 @@ renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = LIGHTING.exposure;
 document.body.appendChild(renderer.domElement);
+
+// --- environment map: without this, `metalness` on imported PBR materials
+// has nothing to reflect and reads flat/matte no matter how the lights are
+// tuned. Generates a soft studio-room reflection once at startup. Wrapped
+// defensively in case the optional RoomEnvironment script failed to load —
+// the scene still looks fine (just flatter) without it.
+if (typeof THREE.RoomEnvironment !== 'undefined' && typeof THREE.PMREMGenerator !== 'undefined') {
+  try {
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+    pmremGenerator.dispose();
+  } catch (e) {
+    console.warn('[kit-turntable] environment map setup failed:', e);
+  }
+}
 
 // Keeps the full ring — and a fully spread-out 12-item kit — in frame on
 // any screen. On narrow/portrait viewports the ring reads much wider than
@@ -289,6 +305,34 @@ ring.rotation.x = -Math.PI/2;
 ring.position.y = -1.4;
 scene.add(ring);
 
+// --- contact shadows: cheap fake grounding (a soft radial-gradient blob,
+// not a real shadow map) so boxes and items don't look like they're
+// floating. One shared texture, reused across every shadow plane.
+function makeContactShadowTexture() {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  g.addColorStop(0, 'rgba(0,0,0,0.45)');
+  g.addColorStop(0.6, 'rgba(0,0,0,0.22)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+}
+const CONTACT_SHADOW_TEXTURE = makeContactShadowTexture();
+function makeContactShadow(radius = 0.6) {
+  const geo = new THREE.PlaneGeometry(radius * 2, radius * 2);
+  const mat = new THREE.MeshBasicMaterial({
+    map: CONTACT_SHADOW_TEXTURE, transparent: true, depthWrite: false, toneMapped: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.raycast = () => {}; // decorative only — never intercepts clicks meant for the item/box
+  return mesh;
+}
+
 // ---------------------------------------------------------------
 // ASSET LOADING — drop your rendered .glb files at these paths and
 // they replace the placeholder shapes automatically. If a file isn't
@@ -325,13 +369,27 @@ function loadIntoSlot(slot, url, { targetSize = 1 } = {}) {
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const scale = targetSize / maxDim;
-    model.scale.setScalar(scale);
     box.getCenter(model.position).multiplyScalar(-scale);
 
     model.traverse(o => { if (o.isMesh) o.userData = slot.userData; });
 
-    while (slot.children.length) slot.remove(slot.children[0]);
+    // clear the placeholder (but never the contact-shadow plane, which is
+    // a permanent child of the same slot) and dispose its GPU resources
+    [...slot.children].forEach(child => {
+      if (child.userData && child.userData.isContactShadow) return;
+      slot.remove(child);
+      child.traverse(o => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose();
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m?.dispose());
+      });
+    });
     slot.add(model);
+
+    // pop the real model in at a tiny scale rather than snapping straight
+    // to full size, so the placeholder->real swap doesn't hard-cut
+    model.scale.setScalar(scale * 0.01);
+    tween(model.scale, { x: scale, y: scale, z: scale }, 350, { ease: easeOutCubic });
 
     // if the kit's model brings its own baked animation (e.g. lid opening),
     // wire it up so it's available to play instead of the manual tween
@@ -340,7 +398,9 @@ function loadIntoSlot(slot, url, { targetSize = 1 } = {}) {
       slot.userData.clips = gltf.animations;
     }
   }, undefined, () => {
-    // no file at this path yet — keep the placeholder, no error shown to the user
+    // no file at this path yet — keep the placeholder. Logged (not shown to
+    // the user) so a typo'd filename during asset integration isn't silent.
+    console.warn(`[kit-turntable] no asset at "${url}" — keeping placeholder.`);
   });
 }
 
@@ -402,6 +462,10 @@ KITS.forEach((data, i) => {
   const basePlaceholder = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 1.1), baseMat);
   basePlaceholder.userData = kitUserData;
   baseSlot.add(basePlaceholder);
+  const baseShadow = makeContactShadow(1.1);
+  baseShadow.position.y = -0.46;
+  baseShadow.userData = { isContactShadow: true };
+  baseSlot.add(baseShadow);
   loadIntoSlot(baseSlot, `${ASSET_BASE}${kitSlug(data.name)}/box.glb`, { targetSize: BOX_TARGET_SIZE });
 
   // lid — optional separate slot; falls back to a simple hinged primitive
@@ -427,6 +491,10 @@ KITS.forEach((data, i) => {
     placeholder.material.color.set(new THREE.Color(data.color).lerp(new THREE.Color(0xffffff), 0.35));
     placeholder.userData = itemUserData;
     slot.add(placeholder);
+    const itemShadow = makeContactShadow(0.5);
+    itemShadow.position.y = -0.46;
+    itemShadow.userData = { isContactShadow: true };
+    slot.add(itemShadow);
     root.add(slot);
     loadIntoSlot(slot, `${ASSET_BASE}${kitSlug(data.name)}/${itemSlug(it.name)}.glb`, { targetSize: ITEM_TARGET_SIZE });
     return slot;
@@ -452,13 +520,23 @@ KITS.forEach((k, i) => {
 // TWEEN HELPER
 // ---------------------------------------------------------------
 function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function tween(obj, to, duration, { ease = easeInOutCubic, onUpdate, onComplete } = {}) {
+  const d = REDUCED_MOTION ? 0 : duration;
+  if (d <= 0) {
+    Object.keys(to).forEach(k => obj[k] = to[k]);
+    if (onUpdate) onUpdate(1);
+    if (onComplete) onComplete();
+    return;
+  }
   const from = {};
   Object.keys(to).forEach(k => from[k] = obj[k]);
   const start = performance.now();
   function step(now) {
-    const t = Math.min(1, (now - start) / duration);
+    const t = Math.min(1, (now - start) / d);
     const e = ease(t);
     Object.keys(to).forEach(k => { obj[k] = from[k] + (to[k] - from[k]) * e; });
     if (onUpdate) onUpdate(t);
@@ -774,15 +852,37 @@ window.addEventListener('mousemove', (e) => {
   turntableGroup.rotation.y += dx * 0.005;
 });
 
+// touch equivalents (single-finger drag) — same behavior, no pinch/zoom handling here
+renderer.domElement.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1) return;
+  isDragging = true;
+  lastX = e.touches[0].clientX;
+}, { passive: true });
+window.addEventListener('touchend', () => isDragging = false);
+window.addEventListener('touchcancel', () => isDragging = false);
+window.addEventListener('touchmove', (e) => {
+  if (!isDragging || STATE !== 'turntable' || !e.touches.length) return;
+  const dx = e.touches[0].clientX - lastX;
+  lastX = e.touches[0].clientX;
+  turntableGroup.rotation.y += dx * 0.005;
+}, { passive: true });
+
+// keyboard: Esc steps back one level, same as the Back button / clicking outside
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (STATE === 'inspecting' && activeKit && activeItem) backFromInspect(activeKit, activeItem);
+  else if (STATE === 'exploded' && activeKit) goToTurntable();
+});
+
 // ---------------------------------------------------------------
 // RENDER LOOP
 // ---------------------------------------------------------------
 function animate() {
   requestAnimationFrame(animate);
-  if (idleSpin && STATE === 'turntable') {
+  if (idleSpin && STATE === 'turntable' && !REDUCED_MOTION) {
     turntableGroup.rotation.y += 0.0035;
   }
-  if (STATE === 'inspecting' && activeItem) {
+  if (STATE === 'inspecting' && activeItem && !REDUCED_MOTION) {
     activeItem.rotation.y += 0.005;
   }
   updateCallout();
