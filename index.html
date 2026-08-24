@@ -27,7 +27,7 @@
   canvas { display: block; }
 
   #hud {
-    position: fixed; inset: 0; pointer-events: none;
+    position: fixed; inset: 0; z-index: 10; pointer-events: none;
     display: flex; flex-direction: column; justify-content: space-between;
     padding: 28px 32px;
   }
@@ -101,12 +101,17 @@
      rotating item reads clearly against it --- */
   #vignette {
     position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    /* radius uses vh units to match how the inspected item is sized: it's
+       scaled to fill ~36% of the viewport height (see computeInspectTransform),
+       so a clear zone of ~40vh diameter always sits just outside the item,
+       regardless of aspect ratio or screen size */
     background: radial-gradient(circle at 50% 52%,
-      transparent 0%,
-      transparent 20%,
-      rgba(12,20,32,0.55) 48%,
-      rgba(12,20,32,0.88) 78%,
-      rgba(12,20,32,0.96) 100%);
+      transparent 0,
+      transparent 20vh,
+      rgba(8,14,22,0.55) 26vh,
+      rgba(6,11,18,0.87) 34vh,
+      rgba(5,9,15,0.97) 46vh,
+      rgba(4,7,12,1) 60vh);
     opacity: 0;
     transition: opacity 0.45s ease;
   }
@@ -185,7 +190,7 @@ function fillerItems(names) {
 
 const KITS = [
   { name: 'Primary',   color: 0xff8a3d, items: fillerItems([
-    'Transceiver Unit', 'Antenna Mast', 'Battery Pack', 'Control Module',
+    'Sharpie', 'Antenna Mast', 'Battery Pack', 'Control Module',
   ])},
   { name: 'Donor',      color: 0x46e0b8, items: fillerItems([
     'Signal Splitter', 'Cable Reel', 'Attenuator', 'Patch Panel', 'Coupler',
