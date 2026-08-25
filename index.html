@@ -227,7 +227,7 @@ const KITS = [
 // `key` for stronger highlights/more contrast, raise `fill`/`ambient`
 // to lift shadowed sides without flattening the look entirely.
 // ---------------------------------------------------------------
-const LIGHTING = { exposure: 0.2, ambient: 0.5, key: 1.0, rim: 0.35, fill: 0.4 };
+const LIGHTING = { exposure: 0.2, ambient: 0.6, key: 1.0, rim: 0.35, fill: 0.4 };
 
 // ---------------------------------------------------------------
 // REAL MODEL LOOK — tuning knobs that apply ONLY to loaded .glb parts,
@@ -241,7 +241,7 @@ const LIGHTING = { exposure: 0.2, ambient: 0.5, key: 1.0, rim: 0.35, fill: 0.4 }
 //                  1 = untouched. 1.2–1.4 is a reasonable "lift" range;
 //                  higher starts to wash out texture detail.
 // ---------------------------------------------------------------
-const MODEL_LOOK = { envBoost: 1.6, brightness: 1.15 };
+const MODEL_LOOK = { envBoost: 1.8, brightness: 1.30 };
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 100);
