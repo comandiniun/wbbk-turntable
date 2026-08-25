@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>Kit Turntable Prototype</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap');a
 
   :root {
     --bg-deep: #0c1420;
@@ -227,7 +227,21 @@ const KITS = [
 // `key` for stronger highlights/more contrast, raise `fill`/`ambient`
 // to lift shadowed sides without flattening the look entirely.
 // ---------------------------------------------------------------
-const LIGHTING = { exposure: 0.95, ambient: 0.4, key: 1.0, rim: 0.35, fill: 0.4 };
+const LIGHTING = { exposure: 0.6, ambient: 0.4, key: 1.0, rim: 0.35, fill: 0.4 };
+
+// ---------------------------------------------------------------
+// REAL MODEL LOOK — tuning knobs that apply ONLY to loaded .glb parts,
+// never to the placeholder shapes. Raise these if your real parts still
+// read dim/flat next to the placeholders once they're in.
+//   envBoost:      how strongly real materials pick up studio reflections.
+//                  This is usually the single biggest fix for "flat/dark"
+//                  PBR materials — roughness/metalness readouts depend on
+//                  having something to reflect. Try 1.5–2.5 if still dim.
+//   brightness:    a straight multiply on each material's base color.
+//                  1 = untouched. 1.2–1.4 is a reasonable "lift" range;
+//                  higher starts to wash out texture detail.
+// ---------------------------------------------------------------
+const MODEL_LOOK = { envBoost: 1.6, brightness: 1.15 };
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 100);
@@ -371,7 +385,18 @@ function loadIntoSlot(slot, url, { targetSize = 1 } = {}) {
     const scale = targetSize / maxDim;
     box.getCenter(model.position).multiplyScalar(-scale);
 
-    model.traverse(o => { if (o.isMesh) o.userData = slot.userData; });
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      o.userData = slot.userData;
+      // brighten real, loaded materials only — placeholders never pass
+      // through here, so this can't affect their look at all
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+        if (!m) return;
+        if ('envMapIntensity' in m) m.envMapIntensity = MODEL_LOOK.envBoost;
+        if (m.color) m.color.multiplyScalar(MODEL_LOOK.brightness);
+        m.needsUpdate = true;
+      });
+    });
 
     // clear the placeholder (but never the contact-shadow plane, which is
     // a permanent child of the same slot) and dispose its GPU resources
@@ -417,6 +442,15 @@ const RADIUS = 5;
 const BOX_TARGET_SIZE = 1.6;
 const ITEM_TARGET_SIZE = 0.9;
 const INSPECT_FILL_FRACTION = 0.36;
+// per-item scale override, keyed by the exact item name — everything
+// normalizes to ITEM_TARGET_SIZE by default (so a tiny screw and a big
+// antenna mast would otherwise both read the same size); use this to
+// restore real proportions between parts without re-exporting from Max.
+// Example: ITEM_SIZE_OVERRIDES = { 'Antenna Mast': 1.3, 'Sealing Tape': 0.6 };
+const ITEM_SIZE_OVERRIDES = {
+'Blood bag': 1.6,
+  
+};
 // how big items render once a kit is opened/exploded, tiered by item count
 // so crowded kits (Donor/Recipient, 10 items) still fit the arc
 const EXPLODED_SCALE_BY_COUNT = { low: 1, mid: 0.75, high: 0.58 };
@@ -496,7 +530,8 @@ KITS.forEach((data, i) => {
     itemShadow.userData = { isContactShadow: true };
     slot.add(itemShadow);
     root.add(slot);
-    loadIntoSlot(slot, `${ASSET_BASE}${kitSlug(data.name)}/${itemSlug(it.name)}.glb`, { targetSize: ITEM_TARGET_SIZE });
+    const itemSize = ITEM_TARGET_SIZE * (ITEM_SIZE_OVERRIDES[it.name] || 1);
+    loadIntoSlot(slot, `${ASSET_BASE}${kitSlug(data.name)}/${itemSlug(it.name)}.glb`, { targetSize: itemSize });
     return slot;
   });
 
