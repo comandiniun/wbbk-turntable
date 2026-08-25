@@ -447,7 +447,9 @@ const INSPECT_FILL_FRACTION = 0.36;
 // antenna mast would otherwise both read the same size); use this to
 // restore real proportions between parts without re-exporting from Max.
 // Example: ITEM_SIZE_OVERRIDES = { 'Antenna Mast': 1.3, 'Sealing Tape': 0.6 };
-const ITEM_SIZE_OVERRIDES = {};
+const ITEM_SIZE_OVERRIDES = {
+   'gloves': 1.3,
+};
 // how big items render once a kit is opened/exploded, tiered by item count
 // so crowded kits (Donor/Recipient, 10 items) still fit the arc
 const EXPLODED_SCALE_BY_COUNT = { low: 1, mid: 0.75, high: 0.58 };
