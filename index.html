@@ -227,7 +227,7 @@ const KITS = [
 // `key` for stronger highlights/more contrast, raise `fill`/`ambient`
 // to lift shadowed sides without flattening the look entirely.
 // ---------------------------------------------------------------
-const LIGHTING = { exposure: 0.6, ambient: 0.4, key: 1.0, rim: 0.35, fill: 0.4 };
+const LIGHTING = { exposure: 0.95, ambient: 0.4, key: 1.0, rim: 0.35, fill: 0.4 };
 
 // ---------------------------------------------------------------
 // REAL MODEL LOOK — tuning knobs that apply ONLY to loaded .glb parts,
@@ -447,10 +447,7 @@ const INSPECT_FILL_FRACTION = 0.36;
 // antenna mast would otherwise both read the same size); use this to
 // restore real proportions between parts without re-exporting from Max.
 // Example: ITEM_SIZE_OVERRIDES = { 'Antenna Mast': 1.3, 'Sealing Tape': 0.6 };
-const ITEM_SIZE_OVERRIDES = {
-'Blood bag': 1.6,
-  
-};
+const ITEM_SIZE_OVERRIDES = {};
 // how big items render once a kit is opened/exploded, tiered by item count
 // so crowded kits (Donor/Recipient, 10 items) still fit the arc
 const EXPLODED_SCALE_BY_COUNT = { low: 1, mid: 0.75, high: 0.58 };
