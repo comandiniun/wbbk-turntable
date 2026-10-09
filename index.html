@@ -24,7 +24,44 @@
     font-family: 'IBM Plex Mono', monospace;
     overflow: hidden;
   }
-  canvas { display: block; }
+  canvas { display: block; position: fixed; inset: 0; z-index: 1; }
+
+  /* --- item frames: light cards BEHIND the transparent WebGL canvas, so each
+     opened item sits on a pale fill and reads clearly --- */
+  #frames { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .item-frame {
+    position: absolute; left: 0; top: 0; opacity: 0;
+    /* iOS-style frosted glass: translucent white (with a faint kit tint),
+       heavy blur + saturation of whatever is behind, hairline light border,
+       soft top highlight and drop shadow */
+    background:
+      linear-gradient(150deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.10) 100%),
+      color-mix(in srgb, var(--kit, #ffffff) 12%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.45); border-radius: 18px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 0 0 1px rgba(255,255,255,0.06);
+    transition: opacity 0.3s ease;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .item-frame.on { opacity: 1; }
+  .item-frame span {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; line-height: 1.15;
+    color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.45);
+    text-align: center; padding: 0 6px 8px;
+  }
+
+  /* --- kit names under the boxes on the turntable --- */
+  #kitLabels { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity 0.3s ease; }
+  #kitLabels.on { opacity: 1; }
+  .kit-label {
+    position: absolute; left: 0; top: 0; white-space: nowrap; cursor: pointer; pointer-events: auto;
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; color: var(--text);
+    background: rgba(18,29,44,0.88); border: 1px solid var(--line); border-radius: 4px;
+    padding: 6px 12px;
+  }
+  .kit-label:hover { border-color: var(--signal); }
 
   #hud {
     position: fixed; inset: 0; z-index: 10; pointer-events: none;
@@ -181,6 +218,8 @@
   </div>
 </div>
 
+<div id="frames"></div>
+<div id="kitLabels"></div>
 <div id="vignette"></div>
 <svg id="calloutSvg"><line id="calloutLine" x1="0" y1="0" x2="0" y2="0" stroke="#ff8a3d" stroke-width="1.5" stroke-dasharray="3 3" /><circle id="calloutDot" r="3.5" fill="#ff8a3d" /></svg>
 <div id="calloutLabel">
@@ -202,18 +241,18 @@ function fillerItems(names) {
 }
 
 const KITS = [
-  { name: 'Primary',   color: 0xff8a3d, items: fillerItems([
+  { name: 'Primary', label: 'Primary Kit', isKit: true, color: 0xff8a3d, items: fillerItems([
     'Sharpie', 'Tape', 'Grip seal bag', 'Gloves',
   ])},
-  { name: 'Donor',      color: 0x46e0b8, items: fillerItems([
+  { name: 'Donor', label: 'Donor Kit', isKit: true, color: 0x46e0b8, items: fillerItems([
     'Plasters', 'Blood bag', 'Turniquet', 'Disinfectant swabs', 'Sterile gauze',
     'Oral rehydration solution', 'Adhesive film dressing', 'Eldon', 'Donor card', 'Grip seal bag',
   ])},
-  { name: 'Recipient',  color: 0x5aa9ff, items: fillerItems([
+  { name: 'Recipient', label: 'Recipient Kit', isKit: true, color: 0x5aa9ff, items: fillerItems([
     'Adhesive film dressing', 'Blood transfusion kit', 'IV catheter', 'Disinfectant swabs', 'Eldon',
     'Grip seal bag', 'Plasters', 'Recipient card', 'Sterile gauze', 'Turniquet',
   ])},
-  { name: 'Transport',  color: 0xe0c840, items: fillerItems([
+  { name: 'Transport', label: 'Transport Components', isKit: false, color: 0xe0c840, items: fillerItems([
     'Portable blood cooler', 'Temperature data logger',
   ])},
 ];
@@ -546,7 +585,7 @@ KITS.forEach((k, i) => {
   const chip = document.createElement('div');
   chip.className = 'kit-chip';
   chip.id = 'chip-' + i;
-  chip.innerHTML = `<span class="swatch" style="background:#${k.color.toString(16).padStart(6,'0')}"></span>${k.name} Kit`;
+  chip.innerHTML = `<span class="swatch" style="background:#${k.color.toString(16).padStart(6,'0')}"></span>${k.label}`;
   legendEl.appendChild(chip);
 });
 
@@ -602,6 +641,7 @@ let STATE = 'turntable'; // turntable | opening | exploded | inspecting
 let activeKit = null;
 let activeItem = null;
 let idleSpin = true;
+let framesOn = false; // item frames visible (kit open, not inspecting)
 
 const backBtn = document.getElementById('backBtn');
 const breadcrumb = document.getElementById('breadcrumb');
@@ -629,6 +669,7 @@ function goToTurntable() {
   // while this one is still tweening closed in the background
   STATE = 'turntable';
   idleSpin = true;
+  framesOn = false;
 
   if (kit) {
     // retract items back into box, close lid, ease the kit's own scale back down —
@@ -646,7 +687,7 @@ function openKit(kitObj) {
   activeKit = kitObj;
   updateLegendActive();
   backBtn.hidden = false;
-  setBreadcrumb(`Turntable &rarr; <span class="current">${kitObj.data.name} Kit</span>`);
+  setBreadcrumb(`Turntable &rarr; <span class="current">${kitObj.data.label}</span>`);
 
   // Rotate the WHOLE ring so this kit's existing slot swings to the front —
   // computed by actually rotating the kit's local direction vector with
@@ -692,6 +733,7 @@ function layoutFor(n, idx) {
 
 function spreadItems(kitObj) {
   STATE = 'exploded';
+  framesOn = true;
   const n = kitObj.items.length;
   kitObj.items.forEach((m, idx) => {
     const L = layoutFor(n, idx);
@@ -763,13 +805,18 @@ function computeInspectTransform(kitObj, mesh) {
 function inspectItem(kitObj, mesh) {
   STATE = 'inspecting';
   activeItem = mesh;
-  setBreadcrumb(`Turntable &rarr; ${kitObj.data.name} Kit &rarr; <span class="current">${mesh.userData.name}</span>`);
+  framesOn = false; // the inspected item has the frosted overlay instead
+  setBreadcrumb(`Turntable &rarr; ${kitObj.data.label} &rarr; <span class="current">${mesh.userData.name}</span>`);
 
   const { localTarget, localScale } = computeInspectTransform(kitObj, mesh);
   tween(mesh.position, { x: localTarget.x, y: localTarget.y, z: localTarget.z }, 550, { ease: easeInOutCubic });
   tween(mesh.scale, { x: localScale, y: localScale, z: localScale }, 550);
+  // the other items shrink away so only the inspected one is on screen
+  kitObj.items.forEach(m => {
+    if (m !== mesh) tween(m.scale, { x: 0.001, y: 0.001, z: 0.001 }, 350);
+  });
 
-  document.getElementById('calloutKit').textContent = kitObj.data.name + ' Kit / Component';
+  document.getElementById('calloutKit').textContent = kitObj.data.label + (kitObj.data.isKit ? ' / Component' : '');
   document.getElementById('calloutName').textContent = mesh.userData.name;
   document.getElementById('calloutLabel').classList.add('active');
   document.getElementById('calloutSvg').classList.add('active');
@@ -779,7 +826,8 @@ function inspectItem(kitObj, mesh) {
 function backFromInspect(kitObj, mesh) {
   STATE = 'exploded';
   activeItem = null;
-  setBreadcrumb(`Turntable &rarr; <span class="current">${kitObj.data.name} Kit</span>`);
+  framesOn = true;
+  setBreadcrumb(`Turntable &rarr; <span class="current">${kitObj.data.label}</span>`);
   document.getElementById('calloutLabel').classList.remove('active');
   document.getElementById('calloutSvg').classList.remove('active');
   document.getElementById('vignette').classList.remove('active');
@@ -789,6 +837,12 @@ function backFromInspect(kitObj, mesh) {
   const L = layoutFor(n, idx);
   tween(mesh.position, { x: L.x, y: L.y, z: L.z }, 450);
   tween(mesh.scale, { x: L.scale, y: L.scale, z: L.scale }, 450);
+  // bring the other items back to their spots in the arc
+  kitObj.items.forEach((m, j) => {
+    if (m === mesh) return;
+    const LJ = layoutFor(n, j);
+    tween(m.scale, { x: LJ.scale, y: LJ.scale, z: LJ.scale }, 450);
+  });
 }
 
 // Projects the inspected item's world position to screen space and
@@ -813,6 +867,81 @@ function updateCallout() {
   dot.setAttribute('cx', sx); dot.setAttribute('cy', sy);
   line.setAttribute('x1', sx); line.setAttribute('y1', sy);
   line.setAttribute('x2', lx); line.setAttribute('y2', ly + 14);
+}
+
+// ---------------------------------------------------------------
+// ITEM FRAMES + KIT LABELS (HTML overlays tracked to 3D positions)
+// FRAME_FILL: how many times the item's size the frame is (bigger = more padding)
+// ---------------------------------------------------------------
+const FRAME_FILL = 1.5;
+const framesEl = document.getElementById('frames');
+const kitLabelsEl = document.getElementById('kitLabels');
+const itemFrames = kitObjects.map(k => k.items.map(slot => {
+  const el = document.createElement('div');
+  el.className = 'item-frame';
+  el.style.setProperty('--kit', '#' + k.data.color.toString(16).padStart(6, '0'));
+  el.innerHTML = `<span>${slot.userData.name}</span>`;
+  framesEl.appendChild(el);
+  return el;
+}));
+const kitLabelEls = kitObjects.map((k, i) => {
+  const el = document.createElement('div');
+  el.className = 'kit-label';
+  el.innerHTML = `<span class="swatch" style="background:#${k.data.color.toString(16).padStart(6,'0')}"></span>${k.data.label}`;
+  el.addEventListener('click', () => { if (STATE === 'turntable') openKit(k); });
+  kitLabelsEl.appendChild(el);
+  return el;
+});
+const _v = new THREE.Vector3();
+function pxPerUnit(worldPos) {
+  const depth = Math.abs(_v.copy(worldPos).applyMatrix4(camera.matrixWorldInverse).z) || 1;
+  return window.innerHeight / (2 * Math.tan(camera.fov * Math.PI / 360) * depth);
+}
+function updateOverlays() {
+  const H = window.innerHeight, Wd = window.innerWidth;
+  kitLabelsEl.classList.toggle('on', STATE === 'turntable');
+  if (STATE === 'turntable') {
+    kitObjects.forEach((k, i) => {
+      const p = k.root.localToWorld(new THREE.Vector3(0, -0.95, 0));
+      const depthT = (p.z + RADIUS) / (2 * RADIUS); // 0 = back of ring, 1 = front
+      const ppu = pxPerUnit(p);
+      p.project(camera);
+      const el = kitLabelEls[i];
+      el.style.transform = `translate(${(p.x*0.5+0.5)*Wd}px, ${(-p.y*0.5+0.5)*H}px) translate(-50%, 0)`;
+      el.style.opacity = (0.45 + 0.55 * Math.max(0, Math.min(1, depthT))).toFixed(2);
+    });
+  }
+  kitObjects.forEach((k, ki) => {
+    const twoRows = k.items.length > 6;
+    k.items.forEach((slot, ii) => {
+      const el = itemFrames[ki][ii];
+      const on = framesOn && k === activeKit && slot !== activeItem;
+      el.classList.toggle('on', on);
+      if (!on && k !== activeKit) return;
+      const wp = slot.getWorldPosition(new THREE.Vector3());
+      const ppu = pxPerUnit(wp);
+      const rootScale = k.root.getWorldScale(new THREE.Vector3()).x;
+      let w = ITEM_TARGET_SIZE * FRAME_FILL * slot.getWorldScale(new THREE.Vector3()).x;
+      if (twoRows) w = Math.min(w, 0.92 * rootScale);
+      w *= ppu;
+      const h = w * 1.28;
+      wp.project(camera);
+      const sx = (wp.x*0.5+0.5)*Wd, sy = (-wp.y*0.5+0.5)*H;
+      el.style.width = w + 'px'; el.style.height = h + 'px';
+      el.style.transform = `translate(${sx - w/2}px, ${sy - w/2}px)`;
+      el.firstChild.style.fontSize = Math.max(8, Math.min(13, w * 0.1)) + 'px';
+    });
+  });
+}
+// clicking a frame (the area around an item) counts as clicking the item
+function frameAt(x, y) {
+  if (!activeKit) return -1;
+  const fr = itemFrames[kitObjects.indexOf(activeKit)];
+  return fr.findIndex(el => {
+    if (!el.classList.contains('on')) return false;
+    const r = el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  });
 }
 
 backBtn.addEventListener('click', () => {
@@ -851,6 +980,8 @@ renderer.domElement.addEventListener('click', (e) => {
       // resolve the leaf mesh hit back to its item slot (the thing we actually animate)
       const itemIndex = hits[0].object.userData.itemIndex;
       inspectItem(activeKit, activeKit.items[itemIndex]);
+    } else if (frameAt(e.clientX, e.clientY) >= 0) {
+      inspectItem(activeKit, activeKit.items[frameAt(e.clientX, e.clientY)]);
     } else {
       // clicked empty space — same as hitting Back
       goToTurntable();
@@ -870,7 +1001,7 @@ renderer.domElement.addEventListener('mousemove', (e) => {
   if (STATE === 'turntable') hoverable = kitObjects.map(k => k.baseSlot);
   else if (STATE === 'exploded' && activeKit) hoverable = activeKit.items;
   const hits = raycaster.intersectObjects(hoverable, true);
-  renderer.domElement.style.cursor = hits.length ? 'pointer' : 'grab';
+  renderer.domElement.style.cursor = (hits.length || (STATE === 'exploded' && frameAt(e.clientX, e.clientY) >= 0)) ? 'pointer' : 'grab';
 });
 
 // ---------------------------------------------------------------
@@ -921,6 +1052,7 @@ function animate() {
   }
   updateCallout();
   renderer.render(scene, camera);
+  updateOverlays();
 }
 animate();
 
