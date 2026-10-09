@@ -241,18 +241,18 @@ function fillerItems(names) {
 }
 
 const KITS = [
-  { name: 'Primary', label: 'Primary Kit', isKit: true, color: 0xff8a3d, items: fillerItems([
+  { name: 'Primary', label: 'Primary Kit', isKit: true, color: 366eb6, items: fillerItems([
     'Sharpie', 'Tape', 'Grip seal bag', 'Gloves',
   ])},
-  { name: 'Donor', label: 'Donor Kit', isKit: true, color: 0x46e0b8, items: fillerItems([
+  { name: 'Donor', label: 'Donor Kit', isKit: true, color: 2d9362, items: fillerItems([
     'Plasters', 'Blood bag', 'Turniquet', 'Disinfectant swabs', 'Sterile gauze',
     'Oral rehydration solution', 'Adhesive film dressing', 'Eldon', 'Donor card', 'Grip seal bag',
   ])},
-  { name: 'Recipient', label: 'Recipient Kit', isKit: true, color: 0x5aa9ff, items: fillerItems([
+  { name: 'Recipient', label: 'Recipient Kit', isKit: true, color: 746aac, items: fillerItems([
     'Adhesive film dressing', 'Blood transfusion kit', 'IV catheter', 'Disinfectant swabs', 'Eldon',
     'Grip seal bag', 'Plasters', 'Recipient card', 'Sterile gauze', 'Turniquet',
   ])},
-  { name: 'Transport', label: 'Transport Components', isKit: false, color: 0xe0c840, items: fillerItems([
+  { name: 'Transport', label: 'Transport Components', isKit: false, color: 1f97b1, items: fillerItems([
     'Portable blood cooler', 'Temperature data logger',
   ])},
 ];
@@ -515,6 +515,58 @@ function makeShape(shapeType, color, size=1) {
   return new THREE.Mesh(geo, mat);
 }
 
+// ---------------------------------------------------------------
+// DETAILED CASE PLACEHOLDERS — stand-ins for box.glb / lid.glb until the
+// 3ds Max exports land (loadIntoSlot swaps them out automatically).
+// Each kit gets its own silhouette: Primary = hard case with handle,
+// Donor = one accent band, Recipient = two bands, Transport = insulated
+// cooler with side handles, raised lid insert and vent plug.
+// Base is centered on its slot (x ±0.8, y ±0.45, z ±0.55); the lid is
+// centered on its slot (0.15 thick), so hinge/lid animation is unchanged.
+// ---------------------------------------------------------------
+function buildCasePlaceholder(data) {
+  const base = new THREE.Group(), lid = new THREE.Group();
+  const col = new THREE.Color(data.color);
+  const std = (c, r = 0.55, m = 0.15) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+  const dark = std(0x1b2633, 0.7, 0.1), metal = std(0xaab4c0, 0.35, 0.85), label = std(0xf1f5f9, 0.6, 0);
+  const cooler = !data.isKit;
+  const body = std(cooler ? col.clone().lerp(new THREE.Color(0xffffff), 0.55) : col);
+  const lidMat = std(cooler ? col : col.clone().multiplyScalar(0.92));
+  const add = (grp, geo, mat, x, y, z, ry = 0) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; grp.add(m); return m;
+  };
+  const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+
+  add(base, B(1.6, 0.9, 1.1), body, 0, 0, 0);
+  add(lid, B(1.6, 0.15, 1.1), lidMat, 0, 0, 0);
+  // hinge at the back
+  [-0.5, 0.5].forEach(x => add(base, B(0.28, 0.1, 0.06), dark, x, 0.4, -0.58));
+  // front label plate
+  add(base, B(0.5, 0.22, 0.02), label, 0, 0.02, 0.56);
+
+  if (!cooler) {
+    // corner guards, latches, carry handle on the lid
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => add(base, B(0.14, 0.14, 0.14), dark, sx * 0.76, -0.41, sz * 0.5));
+    [-0.5, 0.5].forEach(x => {
+      add(base, B(0.16, 0.26, 0.06), dark, x, 0.22, 0.58);
+      add(lid, B(0.16, 0.1, 0.06), metal, x, 0, 0.58);
+    });
+    const handle = add(lid, new THREE.TorusGeometry(0.24, 0.04, 8, 20, Math.PI), dark, 0, 0.075, 0);
+    handle.scale.y = 0.55;
+    // accent bands tell the kits apart: Donor 1, Recipient 2, Primary none
+    const bands = data.name === 'Donor' ? [0.1] : data.name === 'Recipient' ? [0.14, -0.06] : [];
+    bands.forEach(y => add(base, B(1.62, 0.07, 1.12), label, 0, y - 0.1, 0));
+  } else {
+    // insulated cooler: side handles, raised lid insert, vent plug, thick-lip rim
+    [-1, 1].forEach(sx => add(base, new THREE.TorusGeometry(0.2, 0.04, 8, 16, Math.PI), dark, sx * 0.8, 0.1, 0, Math.PI / 2 * sx));
+    add(lid, B(1.3, 0.08, 0.8), std(0xeaf0f6, 0.5, 0.05), 0, 0.1, 0);
+    add(lid, B(1.64, 0.05, 1.14), dark, 0, -0.06, 0);
+    add(base, new THREE.CylinderGeometry(0.07, 0.07, 0.08, 16), metal, 0.62, 0.32, 0.56).rotation.x = Math.PI / 2;
+    [-0.55, 0.55].forEach(x => add(base, B(0.18, 0.2, 0.06), dark, x, 0.22, 0.58));
+  }
+  return { base, lid };
+}
+
 const kitObjects = []; // { root, baseSlot, lid, items[], data, homeAngle }
 
 KITS.forEach((data, i) => {
@@ -531,9 +583,9 @@ KITS.forEach((data, i) => {
   baseSlot.position.y = -0.1;
   root.add(baseSlot);
   const baseMat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.55, metalness: 0.15 });
-  const basePlaceholder = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 1.1), baseMat);
-  basePlaceholder.userData = kitUserData;
-  baseSlot.add(basePlaceholder);
+  const casePH = buildCasePlaceholder(data);
+  casePH.base.traverse(o => { o.userData = kitUserData; }); // so clicks resolve to this kit
+  baseSlot.add(casePH.base);
   const baseShadow = makeContactShadow(1.1);
   baseShadow.position.y = -0.46;
   baseShadow.userData = { isContactShadow: true };
@@ -547,8 +599,7 @@ KITS.forEach((data, i) => {
   const lidSlot = new THREE.Group();
   lidSlot.position.set(0, 0, 0.55);
   lidPivot.add(lidSlot);
-  const lidPlaceholder = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 1.1), baseMat.clone());
-  lidSlot.add(lidPlaceholder);
+  lidSlot.add(casePH.lid);
   lidSlot.userData = kitUserData;
   loadIntoSlot(lidSlot, `${ASSET_BASE}${kitSlug(data.name)}/lid.glb`, { targetSize: BOX_TARGET_SIZE });
 
