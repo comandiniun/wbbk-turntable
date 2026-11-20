@@ -7,30 +7,42 @@
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap');
 
   :root {
-    /* dark glass UI chrome — unchanged; used only inside self-contained
-       panels (buttons, chips, callout tag) that carry their own dark
-       background, so they still read correctly over a light scene */
-    --bg-deep: #0c1420;
-    --bg-panel: #121d2c;
-    --line: #24384e;
-    --signal: #ff8a3d;
-    --signal-dim: #ff8a3d55;
-    --text: #e8eef5;
-    --text-dim: #7f92a8;
-    --ok: #46e0b8;
-    /* studio-background "ink" — for text sitting directly on the light
-       backdrop with no panel of its own (h1, captions, hint, callout tag) */
+    /* "ink" — text sitting directly on the light backdrop with no panel
+       of its own (h1, captions, hint, callout tag) */
     --ink: #1d2126;
     --ink-dim: #6a7076;
     --ink-signal: #c9560f;
     --ink-ok: #0d8f6b;
+    /* Apple-style light glass chrome — every floating control (buttons,
+       chips, labels, the callout tag) shares this one frosted-glass
+       recipe: bright translucent white, a hairline border, a soft close
+       shadow and a faint top highlight, with dark ink text on top */
+    --glass-bg: rgba(255,255,255,0.72);
+    --glass-bg-strong: rgba(255,255,255,0.88);
+    --glass-border: rgba(0,0,0,0.08);
+    --glass-highlight: rgba(255,255,255,0.8);
+    --glass-shadow: 0 6px 20px rgba(20,22,26,0.10);
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
-    /* soft, neutral photo-studio backdrop so the 3D objects themselves
-       read clearly, like a product shot on a seamless paper backdrop */
-    background: radial-gradient(circle at 50% 28%, #f2f2f3 0%, #dcdde0 100%);
+    /* infinity-cove studio backdrop: a seamless paper sweep — bright
+       "wall" up top, a soft shadow band where the paper curves into the
+       "floor", then a gentle catch-light near the bottom where the floor
+       faces the key light. Layered with a faint top key-light spot and a
+       wide vignette so the corners fall off softly, like a real cyc wall. */
+    background:
+      radial-gradient(62% 42% at 50% 6%, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 68%),
+      linear-gradient(180deg,
+        #f6f6f7 0%,
+        #eeeeef 26%,
+        #dddee0 44%,
+        #cbcccf 56%,
+        #dadbde 70%,
+        #e9e9eb 86%,
+        #f0f0f1 100%
+      ),
+      radial-gradient(130% 95% at 50% 55%, transparent 55%, rgba(10,10,14,0.05) 100%);
     color: var(--ink);
     font-family: 'IBM Plex Mono', monospace;
     overflow: hidden;
@@ -69,11 +81,19 @@
   .kit-label {
     position: absolute; left: 0; top: 0; white-space: nowrap; cursor: pointer; pointer-events: auto;
     display: flex; align-items: center; gap: 8px;
-    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; color: var(--text);
-    background: rgba(18,29,44,0.92); border: 1px solid var(--line); border-radius: 4px;
-    padding: 6px 12px;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px; color: var(--ink);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border); border-radius: 10px;
+    box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+    padding: 7px 14px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   }
-  .kit-label:hover { border-color: var(--signal); }
+  .kit-label:hover {
+    border-color: rgba(201,86,15,0.45);
+    box-shadow: 0 8px 22px rgba(20,22,26,0.14), inset 0 1px 0 var(--glass-highlight);
+  }
 
   #hud {
     position: fixed; inset: 0; z-index: 10; pointer-events: none;
@@ -102,13 +122,16 @@
   }
   .kit-chip {
     display: flex; align-items: center; gap: 8px;
-    font-size: 11px; letter-spacing: 0.05em; color: var(--text-dim);
-    border: 1px solid var(--line); background: rgba(18,29,44,0.7);
-    padding: 6px 10px; border-radius: 3px;
+    font-size: 11px; letter-spacing: 0.05em; color: var(--ink-dim);
+    border: 1px solid var(--glass-border); background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+    padding: 6px 10px; border-radius: 8px;
+    box-shadow: 0 3px 10px rgba(20,22,26,0.07), inset 0 1px 0 var(--glass-highlight);
     transition: all 0.2s ease;
   }
-  .kit-chip.active { color: var(--text); border-color: var(--signal); }
-  .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
+  .kit-chip.active { color: var(--ink); border-color: rgba(201,86,15,0.5); }
+  .swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 
   #statebar {
     display: flex; align-items: center; gap: 14px;
@@ -117,13 +140,19 @@
   .btn {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-    background: var(--bg-panel); color: var(--text);
-    border: 1px solid var(--line); border-radius: 3px;
+    background: var(--glass-bg); color: var(--ink);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border); border-radius: 8px;
+    box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
     padding: 10px 16px; cursor: pointer;
-    transition: border-color 0.15s ease, color 0.15s ease;
+    transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   }
-  .btn:hover { border-color: var(--signal); color: var(--signal); }
-  .btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  .btn:hover {
+    border-color: rgba(201,86,15,0.5); color: var(--ink-signal);
+    box-shadow: 0 8px 22px rgba(20,22,26,0.14), inset 0 1px 0 var(--glass-highlight);
+  }
+  .btn:focus-visible { outline: 2px solid var(--ink-signal); outline-offset: 2px; }
   .btn[hidden] { display: none; }
 
   #breadcrumb {
@@ -138,8 +167,9 @@
     max-width: 260px;
   }
   #hint kbd {
-    background: var(--bg-panel); border: 1px solid var(--line);
-    padding: 1px 5px; border-radius: 2px; color: var(--signal);
+    background: var(--glass-bg-strong); border: 1px solid var(--glass-border);
+    padding: 1px 5px; border-radius: 4px; color: var(--ink-signal);
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -198,10 +228,14 @@
   }
   .callout-name {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 16px; font-weight: 700; color: var(--text);
-    background: rgba(18,29,44,0.88); border: 1px solid var(--line);
-    border-left: 2px solid var(--signal);
-    padding: 8px 12px; border-radius: 2px;
+    font-size: 16px; font-weight: 700; color: var(--ink);
+    background: var(--glass-bg-strong);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-left: 2px solid var(--ink-signal);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+    padding: 8px 12px; border-radius: 6px;
     white-space: nowrap;
   }
   .callout-sub {
