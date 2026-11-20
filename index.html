@@ -7,6 +7,9 @@
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap');
 
   :root {
+    /* dark glass UI chrome — unchanged; used only inside self-contained
+       panels (buttons, chips, callout tag) that carry their own dark
+       background, so they still read correctly over a light scene */
     --bg-deep: #0c1420;
     --bg-panel: #121d2c;
     --line: #24384e;
@@ -15,12 +18,20 @@
     --text: #e8eef5;
     --text-dim: #7f92a8;
     --ok: #46e0b8;
+    /* studio-background "ink" — for text sitting directly on the light
+       backdrop with no panel of its own (h1, captions, hint, callout tag) */
+    --ink: #1d2126;
+    --ink-dim: #6a7076;
+    --ink-signal: #c9560f;
+    --ink-ok: #0d8f6b;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
-    background: radial-gradient(circle at 50% 30%, #14233a 0%, var(--bg-deep) 70%);
-    color: var(--text);
+    /* soft, neutral photo-studio backdrop so the 3D objects themselves
+       read clearly, like a product shot on a seamless paper backdrop */
+    background: radial-gradient(circle at 50% 28%, #f2f2f3 0%, #dcdde0 100%);
+    color: var(--ink);
     font-family: 'IBM Plex Mono', monospace;
     overflow: hidden;
   }
@@ -31,24 +42,25 @@
   #frames { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
   .item-frame {
     position: absolute; left: 0; top: 0; opacity: 0;
-    /* iOS-style frosted glass: translucent white (with a faint kit tint),
-       heavy blur + saturation of whatever is behind, hairline light border,
-       soft top highlight and drop shadow */
+    /* Apple-style frosted glass card: a bright, almost-white translucent
+       plate with a faint kit tint, heavy blur/saturation of whatever's
+       behind, a crisp hairline border and a soft, close drop shadow —
+       reads like a product card on a light studio backdrop */
     background:
-      linear-gradient(150deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.10) 100%),
-      color-mix(in srgb, var(--kit, #ffffff) 12%, transparent);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid rgba(255,255,255,0.45); border-radius: 18px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 0 0 1px rgba(255,255,255,0.06);
+      linear-gradient(150deg, rgba(255,255,255,0.86) 0%, rgba(255,255,255,0.58) 100%),
+      color-mix(in srgb, var(--kit, #ffffff) 14%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.9); border-radius: 18px;
+    box-shadow: 0 10px 28px rgba(20,22,26,0.14), inset 0 1px 0 rgba(255,255,255,0.9), inset 0 0 0 1px rgba(0,0,0,0.05);
     transition: opacity 0.3s ease;
     display: flex; align-items: flex-end; justify-content: center;
   }
   .item-frame.on { opacity: 1; }
   .item-frame span {
-    font-family: 'Space Grotesk', sans-serif; font-weight: 600; line-height: 1.15;
-    color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.45);
-    text-align: center; padding: 0 6px 8px;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; line-height: 1.2;
+    color: #1d2126; text-shadow: 0 1px 1px rgba(255,255,255,0.7);
+    text-align: center; padding: 0 6px 10px;
   }
 
   /* --- kit names under the boxes on the turntable --- */
@@ -58,7 +70,7 @@
     position: absolute; left: 0; top: 0; white-space: nowrap; cursor: pointer; pointer-events: auto;
     display: flex; align-items: center; gap: 8px;
     font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; color: var(--text);
-    background: rgba(18,29,44,0.88); border: 1px solid var(--line); border-radius: 4px;
+    background: rgba(18,29,44,0.92); border: 1px solid var(--line); border-radius: 4px;
     padding: 6px 12px;
   }
   .kit-label:hover { border-color: var(--signal); }
@@ -71,16 +83,16 @@
   #hud * { pointer-events: auto; }
 
   .eyebrow {
-    font-size: 11px; letter-spacing: 0.18em; color: var(--signal);
+    font-size: 11px; letter-spacing: 0.18em; color: var(--ink-signal);
     text-transform: uppercase; margin: 0 0 4px 0;
   }
   h1 {
     font-family: 'Space Grotesk', sans-serif;
     font-size: 22px; font-weight: 700; margin: 0;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.01em; color: var(--ink);
   }
   .sub {
-    font-size: 12px; color: var(--text-dim); margin-top: 6px; max-width: 420px; line-height: 1.5;
+    font-size: 12px; color: var(--ink-dim); margin-top: 6px; max-width: 420px; line-height: 1.5;
   }
 
   #legend {
@@ -115,14 +127,14 @@
   .btn[hidden] { display: none; }
 
   #breadcrumb {
-    font-size: 11px; color: var(--text-dim); letter-spacing: 0.08em;
+    font-size: 11px; color: var(--ink-dim); letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  #breadcrumb .current { color: var(--ok); }
+  #breadcrumb .current { color: var(--ink-ok); }
 
   #hint {
     position: absolute; bottom: 28px; right: 32px;
-    font-size: 11px; color: var(--text-dim); text-align: right; line-height: 1.6;
+    font-size: 11px; color: var(--ink-dim); text-align: right; line-height: 1.6;
     max-width: 260px;
   }
   #hint kbd {
@@ -182,7 +194,7 @@
   #calloutLabel.active { opacity: 1; transform: translateY(0); }
   .callout-eyebrow {
     font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
-    color: var(--signal); margin: 0 0 3px 0;
+    color: var(--ink-signal); margin: 0 0 3px 0;
   }
   .callout-name {
     font-family: 'Space Grotesk', sans-serif;
@@ -193,7 +205,7 @@
     white-space: nowrap;
   }
   .callout-sub {
-    font-size: 10px; color: var(--text-dim); margin-top: 4px; letter-spacing: 0.04em;
+    font-size: 10px; color: var(--ink-dim); margin-top: 4px; letter-spacing: 0.04em;
   }
 </style>
 </head>
@@ -221,7 +233,7 @@
 <div id="frames"></div>
 <div id="kitLabels"></div>
 <div id="vignette"></div>
-<svg id="calloutSvg"><line id="calloutLine" x1="0" y1="0" x2="0" y2="0" stroke="#ff8a3d" stroke-width="1.5" stroke-dasharray="3 3" /><circle id="calloutDot" r="3.5" fill="#ff8a3d" /></svg>
+<svg id="calloutSvg"><line id="calloutLine" x1="0" y1="0" x2="0" y2="0" stroke="#c9560f" stroke-width="1.5" stroke-dasharray="3 3" /><circle id="calloutDot" r="3.5" fill="#c9560f" /></svg>
 <div id="calloutLabel">
   <p class="callout-eyebrow" id="calloutKit">Kit</p>
   <div class="callout-name" id="calloutName">Item</div>
@@ -338,7 +350,9 @@ function fitCameraToViewport() {
 }
 fitCameraToViewport();
 
-scene.add(new THREE.AmbientLight(0x8899bb, LIGHTING.ambient));
+// neutral, near-white studio ambient/fill (the dark theme's cool navy
+// tones would tint object undersides blue against a light gray backdrop)
+scene.add(new THREE.AmbientLight(0xf2f2f4, LIGHTING.ambient));
 const key = new THREE.DirectionalLight(0xffffff, LIGHTING.key);
 key.position.set(5, 8, 6);
 scene.add(key);
@@ -347,12 +361,13 @@ rim.position.set(-6, 3, -4);
 scene.add(rim);
 // soft top/bottom fill so the undersides of imported models (which the
 // key + rim lights above don't reach) don't read as pure black
-const fill = new THREE.HemisphereLight(0x9fb4d8, 0x14233a, LIGHTING.fill);
+const fill = new THREE.HemisphereLight(0xffffff, 0xc8cace, LIGHTING.fill);
 scene.add(fill);
 
-// ground ring for grounding
+// ground ring for grounding — a soft neutral-gray guide ring instead of
+// the dark-theme's navy, to sit quietly on the light studio floor
 const ringGeo = new THREE.RingGeometry(5.6, 5.8, 64);
-const ringMat = new THREE.MeshBasicMaterial({ color: 0x24384e, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+const ringMat = new THREE.MeshBasicMaterial({ color: 0xb6b9bd, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
 const ring = new THREE.Mesh(ringGeo, ringMat);
 ring.rotation.x = -Math.PI/2;
 ring.position.y = -1.4;
@@ -980,7 +995,7 @@ function updateOverlays() {
       const sx = (wp.x*0.5+0.5)*Wd, sy = (-wp.y*0.5+0.5)*H;
       el.style.width = w + 'px'; el.style.height = h + 'px';
       el.style.transform = `translate(${sx - w/2}px, ${sy - w/2}px)`;
-      el.firstChild.style.fontSize = Math.max(8, Math.min(13, w * 0.1)) + 'px';
+      el.firstChild.style.fontSize = Math.max(10, Math.min(16, w * 0.125)) + 'px';
     });
   });
 }
